@@ -111,7 +111,6 @@ End
     }
 
     Write-Host "SysInternals update complete"
-    #end of script
 
     Add-Path -Path $Destination
 }
