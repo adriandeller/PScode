@@ -72,7 +72,6 @@ Begin
             Set-ItemProperty -Path "$Reg" -Name PATH –Value $NewPath -Confirm:$false
         }
     }
-
 }
 Process
 {
@@ -111,7 +110,7 @@ End
         Stop-Service WebClient -WhatIf:$False
     }
 
-    Write-Host "SysInternals Update Complete" -ForegroundColor Cyan
+    Write-Host -ForegroundColor Cyan "SysInternals update complete."
     #end of script
 
     Add-Path -Path $Destination
