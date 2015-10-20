@@ -68,7 +68,7 @@ Begin
 
             $Reg = "Registry::HKLM\System\CurrentControlSet\Control\Session Manager\Environment"
             $OldPath = (Get-ItemProperty -Path "$Reg" -Name PATH).Path
-            $NewPath = $OldPath + ';' + $Path
+            $NewPath = $OldPath + ";" + $Path
             Set-ItemProperty -Path "$Reg" -Name PATH –Value $NewPath -Confirm:$false
         }
     }
