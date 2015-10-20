@@ -75,7 +75,7 @@ Begin
 }
 Process
 {
-    Write-Host -ForegroundColor Cyan "Updating SysInternals tools from \\live.sysinternals.com\tools to $destination"
+    Write-Host "Updating SysInternals tools from \\live.sysinternals.com\tools to $destination" -ForegroundColor Cyan
 
     <#
     #get current files in destination
@@ -110,7 +110,7 @@ End
         Stop-Service WebClient -WhatIf:$False
     }
 
-    Write-Host -ForegroundColor Cyan "SysInternals update complete."
+    Write-Host "SysInternals update complete." -ForegroundColor Cyan 
     #end of script
 
     Add-Path -Path $Destination
