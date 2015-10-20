@@ -5,4 +5,6 @@ PowerShell code snippets
 --
 Execute the following one-liner in an elevated powershell prompt
 
-    iex ((new-object net.webclient).DownloadString("https://raw.githubusercontent.com/adriandeller/PScode/master/Get-SysInternals.ps1"))
+```
+iex ((new-object net.webclient).DownloadString("https://raw.githubusercontent.com/adriandeller/PScode/master/Get-SysInternals.ps1"))
+```
