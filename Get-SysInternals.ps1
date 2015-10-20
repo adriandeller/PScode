@@ -110,7 +110,7 @@ End
         Stop-Service WebClient -WhatIf:$False
     }
 
-    Write-Host "SysInternals update complete" -ForegroundColor Cyan 
+    Write-Host "SysInternals update complete"
     #end of script
 
     Add-Path -Path $Destination
