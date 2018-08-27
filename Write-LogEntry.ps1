@@ -1,7 +1,11 @@
+<#
+    inspiration and original code from
+    https://nakedpowershell.blogspot.com/2016/10/tweaks-to-write-logentry.html
+    https://github.com/MSAdministrator/WriteLogEntry
 
-# inspiration and original code from https://nakedpowershell.blogspot.com/2016/10/tweaks-to-write-logentry.html
-# related https://lazywinadmin.github.io/2016/08/powershell-composite-formatting.html
-
+    related:
+    https://lazywinadmin.github.io/2016/08/powershell-composite-formatting.html
+#>
 
 #Region Define enum
 enum Severity
@@ -33,15 +37,27 @@ function Write-LogEntry
     [CmdletBinding()]
     param
     (
+        [Parameter(Mandatory = $true, 
+            ParameterSetName = 'Error')]
         [string]
         $Message,
 
-        [Severity]
-        $Severity = [Severity]::Information,
-        
-        [StateIndicator]
-        $Indicator = [StateIndicator]::Neutral,
+        # The error record containing an exception to log
+        [Parameter(Mandatory = $false, 
+            ParameterSetName = 'Error')]
+        [ValidateNotNullOrEmpty()]
+        [System.Management.Automation.ErrorRecord]
+        $ErrorRecord,
 
+        [Parameter(Mandatory = $false)]
+        [Severity]
+        $Severity = 'Information',
+        
+        [Parameter(Mandatory = $false)]
+        [StateIndicator]
+        $Indicator = 'Neutral',
+
+        [Parameter(Mandatory = $false)]
         [ValidateRange(0, 3)]
         [int]
         $Indent = 0
@@ -95,10 +111,23 @@ function Write-LogEntry
             $Whitespaces = ' ' * 4 * $Indent
         }
 
-        $Message = $Message + " ($Severity | $Indicator)"
+        $Message = $Message #+ " ($Severity | $Indicator)"
         $HostMessage = '{0}{1} {2}' -f $Whitespaces, $Prefix, $Message
         #Write-Verbose -Message $HostMessage -Verbose:$true
         Write-Host -Object $HostMessage
+
+        # Add new line for error record
+        if ($PSBoundParameters.ContainsKey('ErrorRecord'))
+        {
+            $HostMessage = '{0}{1} {2} ({3}: {4}:{5} char:{6})'
+            $HostMessage = '{0}{1} {2}' -f $Whitespaces, $Prefix,
+            $ErrorRecord.Exception.Message,
+            $ErrorRecord.FullyQualifiedErrorId,
+            $ErrorRecord.InvocationInfo.ScriptName,
+            $ErrorRecord.InvocationInfo.ScriptLineNumber,
+            $ErrorRecord.InvocationInfo.OffsetInLine
+            Write-Host -Object $HostMessage
+        }
         #EndRegion
 
 
@@ -111,8 +140,19 @@ function Write-LogEntry
                 
         $FunctionNameStringPaddingRight = $Global:FunctionNameMaxLength + 2
         $LogMessage = "{0,-19} {1,-$FunctionNameStringPaddingRight} {2,-13} {3}" -f $DateString, $FunctionNameString, $SeverityString, $MessageString
-        #$LogMessage
         Add-Content -Path C:\temp\logfile.log -Value $LogMessage
+
+        # Add new line for error record
+        if ($PSBoundParameters.ContainsKey('ErrorRecord'))
+        {
+            $LogMessage = "{0,-19} {1,-$FunctionNameStringPaddingRight} {2,-13} {3} ({4}: {5}:{6} char:{7})" -f $DateString, $FunctionNameString, $SeverityString,
+            $ErrorRecord.Exception.Message,
+            $ErrorRecord.FullyQualifiedErrorId,
+            $ErrorRecord.InvocationInfo.ScriptName,
+            $ErrorRecord.InvocationInfo.ScriptLineNumber,
+            $ErrorRecord.InvocationInfo.OffsetInLine
+            Add-Content -Path C:\temp\logfile.log -Value $LogMessage
+        }
         #EndRegion
     }
     End
@@ -169,9 +209,21 @@ function LogTesterSuperLong
     Write-LogEntry -Message $Text -Severity Warning -Indent 1 -Indicator Failure
     Write-LogEntry -Message $Text -Severity Error -Indent 2
     Write-LogEntry -Message $Text -Indicator Success
+
+    try
+    { 
+        do-something
+    }
+    catch
+    {
+        $Text = 'Oooops an error'
+        Write-LogEntry -Message $Text -Severity Error -Indicator Failure -Indent 1 -ErrorRecord $Error[0]
+    }
+
 }
 
 #LogTester
 #LogTesterLong
 LogTesterSuperLong
 #Get-Content -Path c:\temp\logfile.log
+Invoke-Item c:\temp\logfile.log
