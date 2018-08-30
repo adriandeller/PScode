@@ -37,17 +37,9 @@ function Write-LogEntry
     [CmdletBinding()]
     param
     (
-        [Parameter(Mandatory = $true, 
-            ParameterSetName = 'Error')]
+        [Parameter(Mandatory = $true)]
         [string]
         $Message,
-
-        # The error record containing an exception to log
-        [Parameter(Mandatory = $false, 
-            ParameterSetName = 'Error')]
-        [ValidateNotNullOrEmpty()]
-        [System.Management.Automation.ErrorRecord]
-        $ErrorRecord,
 
         [Parameter(Mandatory = $false)]
         [Severity]
@@ -62,8 +54,68 @@ function Write-LogEntry
         [int]
         $Indent = 0
     )
+
+    DynamicParam
+    {
+        $RuntimeParameterDictionary = New-Object System.Management.Automation.RuntimeDefinedParameterDictionary
+
+        if ($Severity -eq 'Error')
+        {
+            # Set the dynamic parameters' name
+            $ParameterName = 'ErrorRecord'
+
+            # Set the dynamic parameters' type
+            $ParameterType = [System.Management.Automation.ErrorRecord]
+            
+            # Create an AttributeCollection object
+            $AttributeCollection = New-Object System.Collections.ObjectModel.Collection[System.Attribute]
+
+            # Create a ParameterAttribute object
+            $ParameterAttribute = New-Object System.Management.Automation.ParameterAttribute
+            $ParameterAttribute.Mandatory = $false
+            $ParameterAttribute.Position = 0
+            $ParameterAttribute.HelpMessage = "Provide an error object like '$Error[0]'"
+
+            # Add the new ParameterAttribute object to the AttributeCollection object
+            $AttributeCollection.Add($ParameterAttribute)
+
+            # Create an ValidateNotNullOrEmptyAttribute object
+            $ValidateNotNullOrEmptyAttribute = New-Object System.Management.Automation.ValidateNotNullOrEmptyAttribute
+
+            # Add the ValidateNotNullOrEmptyAttribute to the attributes collection
+            $AttributeCollection.Add($ValidateNotNullOrEmptyAttribute)
+
+            # Create and add the new dynamic paramater to collection
+            $RuntimeParameter = New-Object System.Management.Automation.RuntimeDefinedParameter($ParameterName, $ParameterType, $AttributeCollection)
+            $RuntimeParameterDictionary.Add($ParameterName, $RuntimeParameter)
+        }
+        # return the collection with the dynamic paramaters
+        return $RuntimeParameterDictionary
+    }
+
     Begin
     {
+        #
+        if ($PSBoundParameters.ContainsKey('ErrorRecord'))
+        {
+            $ErrorRecord = $PSBoundParameters.ErrorRecord
+        }
+        #
+        #This standard block of code loops through bound parameters...
+        #If no corresponding variable exists, one is created
+        #Get common parameters, pick out bound parameters not in that set
+        <#
+        function _temp { [CmdletBinding()] param() }
+        $BoundKeys = $PSBoundParameters.keys | Where-Object { (Get-Command _temp | Select-Object -ExpandProperty Parameters).Keys -notcontains $_}
+        foreach ($param in $BoundKeys)
+        {
+            if (-not ( Get-Variable -name $param -scope 0 -ErrorAction SilentlyContinue ) )
+            {
+                New-Variable -Name $Param -Value $PSBoundParameters.$param
+                Write-Verbose "Adding variable for dynamic parameter '$param' with value '$($PSBoundParameters.$param)'"
+            }
+        }
+        #>
     }
     Process
     {
@@ -108,24 +160,19 @@ function Write-LogEntry
 
         if ($Indent -gt 0)
         {
-            $Whitespaces = ' ' * 4 * $Indent
+            #$Whitespaces = ' ' * 4 * $Indent
+            $Whitespaces = ' '.PadRight(4 * $Indent)
         }
 
-        $Message = $Message #+ " ($Severity | $Indicator)"
+        #$Message = $Message + " ($Severity | $Indicator)"
         $HostMessage = '{0}{1} {2}' -f $Whitespaces, $Prefix, $Message
-        #Write-Verbose -Message $HostMessage -Verbose:$true
         Write-Host -Object $HostMessage
 
         # Add new line for error record
-        if ($PSBoundParameters.ContainsKey('ErrorRecord'))
+        if ($ErrorRecord)
         {
-            $HostMessage = '{0}{1} {2} ({3}: {4}:{5} char:{6})'
-            $HostMessage = '{0}{1} {2}' -f $Whitespaces, $Prefix,
-            $ErrorRecord.Exception.Message,
-            $ErrorRecord.FullyQualifiedErrorId,
-            $ErrorRecord.InvocationInfo.ScriptName,
-            $ErrorRecord.InvocationInfo.ScriptLineNumber,
-            $ErrorRecord.InvocationInfo.OffsetInLine
+            $ErrorRecord = $PSBoundParameters.ErrorRecord
+            $HostMessage = '{0}{1} {2}' -f $Whitespaces, $Prefix, $ErrorRecord.Exception.Message
             Write-Host -Object $HostMessage
         }
         #EndRegion
@@ -134,18 +181,20 @@ function Write-LogEntry
         #Region Write message to log file
         $DateString = (Get-Date -Format s)
         $FunctionName = (Get-PSCallStack)[1].FunctionName
-        $FunctionNameString = '[' + $FunctionName + ']'
-        $SeverityString = '[' + $Severity + ']'
+        $FunctionNameString = "[$FunctionName]".PadRight($Global:FunctionNameMaxLength + 2)
+        $SeverityString = "[$Severity]".PadRight(11 + 2) # 'Information' = 11 characters = longest string
         $MessageString = $Message
                 
-        $FunctionNameStringPaddingRight = $Global:FunctionNameMaxLength + 2
-        $LogMessage = "{0,-19} {1,-$FunctionNameStringPaddingRight} {2,-13} {3}" -f $DateString, $FunctionNameString, $SeverityString, $MessageString
+        #$FunctionNameStringPaddingRight = $Global:FunctionNameMaxLength + 2
+        #$LogMessage = "{0,-19} {1,-$FunctionNameStringPaddingRight} {2,-13} {3}" -f $DateString, $FunctionNameString, $SeverityString, $MessageString
+        $LogMessage = "{0} {1} {2} {3}" -f $DateString, $FunctionNameString, $SeverityString, $MessageString
         Add-Content -Path C:\temp\logfile.log -Value $LogMessage
 
         # Add new line for error record
         if ($PSBoundParameters.ContainsKey('ErrorRecord'))
         {
-            $LogMessage = "{0,-19} {1,-$FunctionNameStringPaddingRight} {2,-13} {3} ({4}: {5}:{6} char:{7})" -f $DateString, $FunctionNameString, $SeverityString,
+            #$LogMessage = "{0,-19} {1,-$FunctionNameStringPaddingRight} {2,-13} {3} ({4}: {5}:{6} char:{7})" -f $DateString, $FunctionNameString, $SeverityString,
+            $LogMessage = "{0} {1} {2} {3} ({4}: {5}:{6} char:{7})" -f $DateString, $FunctionNameString, $SeverityString,
             $ErrorRecord.Exception.Message,
             $ErrorRecord.FullyQualifiedErrorId,
             $ErrorRecord.InvocationInfo.ScriptName,
@@ -223,7 +272,7 @@ function LogTesterSuperLong
 }
 
 #LogTester
-#LogTesterLong
+LogTesterLong
 LogTesterSuperLong
 #Get-Content -Path c:\temp\logfile.log
 Invoke-Item c:\temp\logfile.log
