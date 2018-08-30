@@ -15,7 +15,7 @@ enum Severity
     Error
 }
 
-enum StateIndicator
+enum Indicator
 {
     Neutral
     Success
@@ -26,27 +26,28 @@ enum StateIndicator
 
 #Region Find the function with the longest name
 $Functions = @()
-$Functions = $MyInvocation.MyCommand.ScriptBlock.Ast.EndBlock.Statements.Where( {$_ -is [Management.Automation.Language.FunctionDefinitionAst]})
-$Functions = $Functions | Select-Object Name, @{N = 'Lengt'; E = {($PSItem.Name | Measure-Object -Character).Characters}}
-$Global:FunctionNameMaxLength = $Functions.Lengt | Sort-Object -Descending | Select-Object -First 1
+$Functions = $MyInvocation.MyCommand.ScriptBlock.Ast.EndBlock.Statements.Where( {$_ -is [Management.Automation.Language.FunctionDefinitionAst]} )
+$Functions = $Functions | Select-Object Name, @{N = 'Length'; E = { ($PSItem.Name).ToString().Length } }
+$Global:FunctionNameMaxLength = $Functions | Sort-Object -Property Length | Select-Object -Last 1 -ExpandProperty Length
 #EndRegion
 
 
+#Region Write-LogEntry
 function Write-LogEntry
 {
     [CmdletBinding()]
     param
     (
-        [Parameter(Mandatory = $true)]
+        [Parameter(Mandatory = $false)]
         [string]
-        $Message,
+        $Message = '',
 
         [Parameter(Mandatory = $false)]
         [Severity]
         $Severity = 'Information',
         
         [Parameter(Mandatory = $false)]
-        [StateIndicator]
+        [Indicator]
         $Indicator = 'Neutral',
 
         [Parameter(Mandatory = $false)]
@@ -57,7 +58,8 @@ function Write-LogEntry
 
     DynamicParam
     {
-        $RuntimeParameterDictionary = New-Object System.Management.Automation.RuntimeDefinedParameterDictionary
+        # Create an RuntimeDefinedParameterDictionary object
+        $ParameterDictionary = New-Object System.Management.Automation.RuntimeDefinedParameterDictionary
 
         if ($Severity -eq 'Error')
         {
@@ -67,106 +69,107 @@ function Write-LogEntry
             # Set the dynamic parameters' type
             $ParameterType = [System.Management.Automation.ErrorRecord]
             
-            # Create an AttributeCollection object
-            $AttributeCollection = New-Object System.Collections.ObjectModel.Collection[System.Attribute]
+            # Create an Collection object
+            $Collection = New-Object System.Collections.ObjectModel.Collection[System.Attribute]
 
-            # Create a ParameterAttribute object
+            # Create a ParameterAttribute object and define properties
             $ParameterAttribute = New-Object System.Management.Automation.ParameterAttribute
             $ParameterAttribute.Mandatory = $false
             $ParameterAttribute.Position = 0
             $ParameterAttribute.HelpMessage = "Provide an error object like '$Error[0]'"
 
-            # Add the new ParameterAttribute object to the AttributeCollection object
-            $AttributeCollection.Add($ParameterAttribute)
+            # Add the new ParameterAttribute object to the Collection object
+            $Collection.Add($ParameterAttribute)
 
             # Create an ValidateNotNullOrEmptyAttribute object
             $ValidateNotNullOrEmptyAttribute = New-Object System.Management.Automation.ValidateNotNullOrEmptyAttribute
 
             # Add the ValidateNotNullOrEmptyAttribute to the attributes collection
-            $AttributeCollection.Add($ValidateNotNullOrEmptyAttribute)
+            $Collection.Add($ValidateNotNullOrEmptyAttribute)
 
             # Create and add the new dynamic paramater to collection
-            $RuntimeParameter = New-Object System.Management.Automation.RuntimeDefinedParameter($ParameterName, $ParameterType, $AttributeCollection)
-            $RuntimeParameterDictionary.Add($ParameterName, $RuntimeParameter)
+            $RuntimeParameter = New-Object System.Management.Automation.RuntimeDefinedParameter($ParameterName, $ParameterType, $Collection)
+            $ParameterDictionary.Add($ParameterName, $RuntimeParameter)
         }
         # return the collection with the dynamic paramaters
-        return $RuntimeParameterDictionary
+        return $ParameterDictionary
     }
 
     Begin
     {
-        #
-        if ($PSBoundParameters.ContainsKey('ErrorRecord'))
+        # Create variables for dynamic parameters:
+        #  loop through bound parameters, filter out common parameters
+        #  if no corresponding variable exists, create one
+        $CommonParameters = [System.Management.Automation.PSCmdlet]::CommonParameters + [System.Management.Automation.PSCmdlet]::OptionalCommonParameters
+        $BoundKeys = $PSBoundParameters.keys | Where-Object { $CommonParameters -notcontains $_}
+        foreach ($Param in $BoundKeys)
         {
-            $ErrorRecord = $PSBoundParameters.ErrorRecord
-        }
-        #
-        #This standard block of code loops through bound parameters...
-        #If no corresponding variable exists, one is created
-        #Get common parameters, pick out bound parameters not in that set
-        <#
-        function _temp { [CmdletBinding()] param() }
-        $BoundKeys = $PSBoundParameters.keys | Where-Object { (Get-Command _temp | Select-Object -ExpandProperty Parameters).Keys -notcontains $_}
-        foreach ($param in $BoundKeys)
-        {
-            if (-not ( Get-Variable -name $param -scope 0 -ErrorAction SilentlyContinue ) )
+            if (-not ( Get-Variable -name $param -Scope 0 -ErrorAction SilentlyContinue ) )
             {
-                New-Variable -Name $Param -Value $PSBoundParameters.$param
-                Write-Verbose "Adding variable for dynamic parameter '$param' with value '$($PSBoundParameters.$param)'"
+                New-Variable -Name $Param -Value $PSBoundParameters.$Param
+                Write-Verbose "Adding variable for dynamic parameter '$Param' with value '$($PSBoundParameters.$Param)'"
             }
         }
-        #>
-    }
-    Process
-    {
+
+        # Set custom value for ForegroundColor
         switch ($Severity)
         {
             Information
             {
-                $Host.PrivateData.VerboseForegroundColor = [System.ConsoleColor]::White #Cyan
+                #$Host.PrivateData.VerboseForegroundColor = [System.ConsoleColor]::White
+                $PSDefaultParameterValues = @{'Write-Host:ForegroundColor' = [System.ConsoleColor]::White}
             }
             Warning
             {
-                $Host.PrivateData.VerboseForegroundColor = [System.ConsoleColor]::Yellow
+                #$Host.PrivateData.VerboseForegroundColor = [System.ConsoleColor]::Yellow
                 $PSDefaultParameterValues = @{'Write-Host:ForegroundColor' = [System.ConsoleColor]::Yellow}
             }
             Error
             {
-                $Host.PrivateData.VerboseForegroundColor = [System.ConsoleColor]::Red
+                #$Host.PrivateData.VerboseForegroundColor = [System.ConsoleColor]::Red
                 $PSDefaultParameterValues = @{'Write-Host:ForegroundColor' = [System.ConsoleColor]::Red}
             }
         }
 
         switch ($Indicator)
         {
-            Neutral { $IndicatorSymbol = '*' }
             Success
             {
-                $IndicatorSymbol = '+' 
-                $Host.PrivateData.VerboseForegroundColor = [System.ConsoleColor]::Green
+                #$Host.PrivateData.VerboseForegroundColor = [System.ConsoleColor]::Green
                 $PSDefaultParameterValues = @{'Write-Host:ForegroundColor' = [System.ConsoleColor]::Green}
             }
             Failure
             {
-                $IndicatorSymbol = '-' 
-                $Host.PrivateData.VerboseForegroundColor = [System.ConsoleColor]::Red
+                #$Host.PrivateData.VerboseForegroundColor = [System.ConsoleColor]::Red
                 $PSDefaultParameterValues = @{'Write-Host:ForegroundColor' = [System.ConsoleColor]::Red}
             }
         }
 
+        # Define look-up table
+        $IndicatorSymbols = @{
+            Neutral = '*'
+            Success = '+'
+            Failure = '-'
+        }
+    }
+    Process
+    {
         #Region Write message to Host
-        $Prefix = "[$IndicatorSymbol]"
+        $Prefix = '[' + $IndicatorSymbols[[string]$Indicator] + ']'
         $Whitespaces = $null
 
         if ($Indent -gt 0)
         {
-            #$Whitespaces = ' ' * 4 * $Indent
             $Whitespaces = ' '.PadRight(4 * $Indent)
         }
 
-        #$Message = $Message + " ($Severity | $Indicator)"
         $HostMessage = '{0}{1} {2}' -f $Whitespaces, $Prefix, $Message
-        Write-Host -Object $HostMessage
+
+        # Skip if message is empty
+        if (-not ([string]::IsNullOrEmpty($Message)))
+        {    
+            Write-Host -Object $HostMessage
+        }
 
         # Add new line for error record
         if ($ErrorRecord)
@@ -183,15 +186,16 @@ function Write-LogEntry
         $FunctionName = (Get-PSCallStack)[1].FunctionName
         $FunctionNameString = "[$FunctionName]".PadRight($Global:FunctionNameMaxLength + 2)
         $SeverityString = "[$Severity]".PadRight(11 + 2) # 'Information' = 11 characters = longest string
-        $MessageString = $Message
-                
-        #$FunctionNameStringPaddingRight = $Global:FunctionNameMaxLength + 2
-        #$LogMessage = "{0,-19} {1,-$FunctionNameStringPaddingRight} {2,-13} {3}" -f $DateString, $FunctionNameString, $SeverityString, $MessageString
-        $LogMessage = "{0} {1} {2} {3}" -f $DateString, $FunctionNameString, $SeverityString, $MessageString
-        Add-Content -Path C:\temp\logfile.log -Value $LogMessage
+        $LogMessage = "{0} {1} {2} {3}" -f $DateString, $FunctionNameString, $SeverityString, $Message
 
+        # Skip if message is empty
+        if (-not ([string]::IsNullOrEmpty($Message)))
+        {
+            Add-Content -Path C:\temp\logfile.log -Value $LogMessage
+        }
+        
         # Add new line for error record
-        if ($PSBoundParameters.ContainsKey('ErrorRecord'))
+        if ($ErrorRecord)
         {
             #$LogMessage = "{0,-19} {1,-$FunctionNameStringPaddingRight} {2,-13} {3} ({4}: {5}:{6} char:{7})" -f $DateString, $FunctionNameString, $SeverityString,
             $LogMessage = "{0} {1} {2} {3} ({4}: {5}:{6} char:{7})" -f $DateString, $FunctionNameString, $SeverityString,
@@ -206,21 +210,37 @@ function Write-LogEntry
     }
     End
     {
-        $Host.PrivateData.VerboseForegroundColor = [System.ConsoleColor]::Yellow
+        #$Host.PrivateData.VerboseForegroundColor = [System.ConsoleColor]::Yellow
         $PSDefaultParameterValues.Remove('Write-Host:ForegroundColor')
     }
 }
+#EndRegion
+
 
 function LogTester
 {
     [CmdletBinding()]
     param
     (
-        
+        $Text = 'Lorem ipsum dolor sit amet'
     )
-    Write-LogEntry -Message "Test as information" -Severity Information
-    Write-LogEntry -Message "Test as warning" -Severity Warning
-    Write-LogEntry -Message "Test as error" -Severity Error
+
+    $Text = "[$((Get-PSCallStack)[0].FunctionName)] $Text"
+
+    Write-LogEntry -Message $Text -Severity Information
+    Write-LogEntry -Message $Text -Severity Error
+    Write-LogEntry -Message $Text -Severity Warning
+
+    $FilePath = "C:\this-does-not-exist.log"
+    try
+    { 
+        Write-LogEntry -Message 'Get content from not existing file $FilePath' -Severity Information -Indent 1
+        Get-Content -Path $FilePath -ErrorAction Stop
+    }
+    catch
+    {
+        Write-LogEntry -Severity Error -Indent 2 -ErrorRecord $Error[0]
+    }
 }
 
 function LogTesterLong
@@ -271,8 +291,9 @@ function LogTesterSuperLong
 
 }
 
-#LogTester
+
 LogTesterLong
+LogTester
 LogTesterSuperLong
 #Get-Content -Path c:\temp\logfile.log
 Invoke-Item c:\temp\logfile.log
