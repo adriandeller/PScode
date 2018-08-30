@@ -2,6 +2,8 @@
     inspiration and original code from
     https://nakedpowershell.blogspot.com/2016/10/tweaks-to-write-logentry.html
     https://github.com/MSAdministrator/WriteLogEntry
+    https://github.com/9to5IT/PSLogging
+    https://github.com/platta/PSMultiLog
 
     related:
     https://lazywinadmin.github.io/2016/08/powershell-composite-formatting.html
@@ -26,8 +28,8 @@ enum Indicator
 
 #Region Find the function with the longest name
 $Functions = @()
-$Functions = $MyInvocation.MyCommand.ScriptBlock.Ast.EndBlock.Statements.Where( {$_ -is [Management.Automation.Language.FunctionDefinitionAst]} )
-$Functions = $Functions | Select-Object Name, @{N = 'Length'; E = { ($PSItem.Name).ToString().Length } }
+$Functions = $MyInvocation.MyCommand.ScriptBlock.Ast.EndBlock.Statements.Where( {$_ -is [Management.Automation.Language.FunctionDefinitionAst]})
+$Functions = $Functions | Select-Object Name, @{N = 'Length'; E = {($PSItem.Name).ToString().Length }}
 $Global:FunctionNameMaxLength = $Functions | Sort-Object -Property Length | Select-Object -Last 1 -ExpandProperty Length
 #EndRegion
 
@@ -78,20 +80,22 @@ function Write-LogEntry
             $ParameterAttribute.Position = 0
             $ParameterAttribute.HelpMessage = "Provide an error object like '$Error[0]'"
 
-            # Add the new ParameterAttribute object to the Collection object
+            # Add the ParameterAttribute object to the Collection object
             $Collection.Add($ParameterAttribute)
 
-            # Create an ValidateNotNullOrEmptyAttribute object
+            # Create a ValidateNotNullOrEmptyAttribute object
             $ValidateNotNullOrEmptyAttribute = New-Object System.Management.Automation.ValidateNotNullOrEmptyAttribute
 
-            # Add the ValidateNotNullOrEmptyAttribute to the attributes collection
+            # Add the ValidateNotNullOrEmptyAttribute object to the Collection object
             $Collection.Add($ValidateNotNullOrEmptyAttribute)
 
-            # Create and add the new dynamic paramater to collection
+            # Create a RuntimeDefinedParameter object for the new dynamic paramater
             $RuntimeParameter = New-Object System.Management.Automation.RuntimeDefinedParameter($ParameterName, $ParameterType, $Collection)
+
+            # Add the RuntimeDefinedParameter object to the ParameterDictionary object
             $ParameterDictionary.Add($ParameterName, $RuntimeParameter)
         }
-        # return the collection with the dynamic paramaters
+        # return the ParameterDictionary object with the new dynamic paramaters
         return $ParameterDictionary
     }
 
@@ -151,6 +155,9 @@ function Write-LogEntry
             Success = '+'
             Failure = '-'
         }
+
+        # Creating a new mutex object
+        $Mutex = New-Object -TypeName 'Threading.Mutex' -ArgumentList $false, 'MyInterprocMutex'
     }
     Process
     {
@@ -183,28 +190,32 @@ function Write-LogEntry
 
         #Region Write message to log file
         $DateString = (Get-Date -Format s)
-        $FunctionName = (Get-PSCallStack)[1].FunctionName
-        $FunctionNameString = "[$FunctionName]".PadRight($Global:FunctionNameMaxLength + 2)
+        $Command = (Get-PSCallStack)[1].Command # FunctionName
+        $CommandString = "[$Command]".PadRight($Global:FunctionNameMaxLength + 2)
         $SeverityString = "[$Severity]".PadRight(11 + 2) # 'Information' = 11 characters = longest string
-        $LogMessage = "{0} {1} {2} {3}" -f $DateString, $FunctionNameString, $SeverityString, $Message
+        $LogMessage = "{0} {1} {2} {3}" -f $DateString, $CommandString, $SeverityString, $Message
 
         # Skip if message is empty
         if (-not ([string]::IsNullOrEmpty($Message)))
         {
+            $null = $Mutex.WaitOne()
             Add-Content -Path C:\temp\logfile.log -Value $LogMessage
+            $null = $Mutex.ReleaseMutex()
         }
         
         # Add new line for error record
         if ($ErrorRecord)
         {
-            #$LogMessage = "{0,-19} {1,-$FunctionNameStringPaddingRight} {2,-13} {3} ({4}: {5}:{6} char:{7})" -f $DateString, $FunctionNameString, $SeverityString,
-            $LogMessage = "{0} {1} {2} {3} ({4}: {5}:{6} char:{7})" -f $DateString, $FunctionNameString, $SeverityString,
+            $LogMessage = "{0} {1} {2} {3} ({4}: {5}:{6} char:{7})" -f $DateString, $CommandString, $SeverityString,
             $ErrorRecord.Exception.Message,
             $ErrorRecord.FullyQualifiedErrorId,
             $ErrorRecord.InvocationInfo.ScriptName,
             $ErrorRecord.InvocationInfo.ScriptLineNumber,
             $ErrorRecord.InvocationInfo.OffsetInLine
+
+            $null = $Mutex.WaitOne()
             Add-Content -Path C:\temp\logfile.log -Value $LogMessage
+            $null = $Mutex.ReleaseMutex()
         }
         #EndRegion
     }
@@ -225,21 +236,33 @@ function LogTester
         $Text = 'Lorem ipsum dolor sit amet'
     )
 
-    $Text = "[$((Get-PSCallStack)[0].FunctionName)] $Text"
-
-    Write-LogEntry -Message $Text -Severity Information
-    Write-LogEntry -Message $Text -Severity Error
-    Write-LogEntry -Message $Text -Severity Warning
-
-    $FilePath = "C:\this-does-not-exist.log"
-    try
-    { 
-        Write-LogEntry -Message 'Get content from not existing file $FilePath' -Severity Information -Indent 1
-        Get-Content -Path $FilePath -ErrorAction Stop
-    }
-    catch
+    Begin
     {
-        Write-LogEntry -Severity Error -Indent 2 -ErrorRecord $Error[0]
+    }
+    
+    Process
+    {
+        $Command = (Get-PSCallStack)[0].Command
+        $TextTitle = "[$Command] $Text"
+
+        Write-LogEntry -Message $TextTitle -Severity Information
+        Write-LogEntry -Message $Text -Severity Error -Indent 1
+        Write-LogEntry -Message $Text -Severity Warning -Indent 1 -Indicator Success
+
+        $FilePath = "C:\this-does-not-exist.log"
+        try
+        { 
+            Write-LogEntry -Message 'Get content from not existing file $FilePath' -Severity Information -Indent 1
+            Get-Content -Path $FilePath -ErrorAction Stop
+        }
+        catch
+        {
+            Write-LogEntry -Severity Error -Indent 1 -ErrorRecord $Error[0]
+        }
+    }
+    End
+    {
+
     }
 }
 
@@ -250,7 +273,11 @@ function LogTesterLong
     (
         $Text = 'Lorem ipsum dolor sit amet'
     )
-    Write-LogEntry -Message $Text -Severity Information
+
+    $Command = (Get-PSCallStack)[0].Command
+    $TextTitle = "[$Command] $Text"
+
+    Write-LogEntry -Message $TextTitle -Severity Information
     Write-LogEntry -Message $Text -Severity Information -Indent 1
     Write-LogEntry -Message $Text -Severity Information -Indent 2 -Indicator Failure
     Write-LogEntry -Message $Text -Severity Information -Indent 2 -Indicator Success
@@ -258,7 +285,7 @@ function LogTesterLong
     Write-LogEntry -Message $Text -Severity Warning -Indent 1
     Write-LogEntry -Message $Text -Severity Warning -Indent 1 -Indicator Failure
     Write-LogEntry -Message $Text -Severity Error -Indent 2
-    Write-LogEntry -Message $Text
+    Write-LogEntry -Message $TextTitle
 }
 
 function LogTesterSuperLong
