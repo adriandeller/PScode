@@ -26,11 +26,20 @@ enum Indicator
 #EndRegion
 
 
-#Region Find the function with the longest name
-$Functions = @()
-$Functions = $MyInvocation.MyCommand.ScriptBlock.Ast.EndBlock.Statements.Where( {$_ -is [Management.Automation.Language.FunctionDefinitionAst]})
-$Functions = $Functions | Select-Object Name, @{N = 'Length'; E = {($PSItem.Name).ToString().Length }}
-$Global:FunctionNameMaxLength = $Functions | Sort-Object -Property Length | Select-Object -Last 1 -ExpandProperty Length
+#Region Find the function with the longest name in the current script
+#$Global:FunctionNameMaxLength = $MyInvocation.MyCommand.ScriptBlock.Ast.EndBlock.Statements | 
+#    Where-Object {$_ -is [Management.Automation.Language.FunctionDefinitionAst]} | 
+#    Select-Object -Property Name, @{N = 'Length'; E = {($PSItem.Name).ToString().Length }} | 
+#    Sort-Object -Property Length | 
+#    Select-Object -Last 1 -ExpandProperty Length
+#EndRegion
+
+
+#Region Find the function with the longest name availbale in 'Function' drive
+#$Global:FunctionNameMaxLength = Get-ChildItem Function: | 
+#    Select-Object Name, @{N = 'Length'; E = {($PSItem.Name).ToString().Length }} | 
+#    Sort-Object -Property Length | 
+#    Select-Object -Last 1 -ExpandProperty Length
 #EndRegion
 
 
