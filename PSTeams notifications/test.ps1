@@ -9,7 +9,7 @@ $PesterResults = Invoke-ADGroupConfigTest -GroupCode $GroupCode -DepartmentPrefi
 
 if ($PesterResults.FailedCount -gt 0)
 {
-    $TestResultsErrors = $PesterResults.TestResult | Where-Object { $_.Result -ne 'Passed' } | Group-Object -Property Describe -AsHashTable
+    $PesterResultsErrors = $PesterResults.TestResult | Where-Object { $_.Result -ne 'Passed' } | Group-Object -Property Describe -AsHashTable
 }
 else
 {
@@ -25,10 +25,24 @@ $TeamConfig = (Get-Content -Path "$PSScriptRoot\config.json") | ConvertFrom-Json
 
 $TeamsMessageColor = [System.Drawing.Color]::Cyan
 
-if ($TestResultsErrors)
+if ($PesterResultsErrors)
 {
     $TeamsSections = @()
-    $TeamsSections = $TestResultsErrors.GetEnumerator() | ForEach-Object {
+
+    # Summary section
+    $ActivityDetailsSummary = @()
+    $ActivityDetailsSummary += New-TeamsFact -Name "Tests Passed" -Value ">$($PesterResults.PassedCount)"
+    $ActivityDetailsSummary += New-TeamsFact -Name "Tests Failed" -Value ">$($PesterResults.FailedCount)"
+
+    $TeamsSectionSummary = @{
+        ActivityTitle   = "**Summary**" 
+        ActivityText    = 'Errors in AD group configuration have been detected.' 
+        ActivityDetails = $ActivityDetailsSummary
+    }
+    $TeamsSections += New-TeamsSection @TeamsSectionSummary
+
+    # Create a Section for each Describe
+    $TeamsSections += $PesterResultsErrors.GetEnumerator() | ForEach-Object {
         $SectionName = $PSItem.Name
         $SectionValue = $PSItem.Value
         $ActivityDetails = @()
@@ -41,7 +55,7 @@ if ($TestResultsErrors)
             ActivityTitle   = "**$SectionName**" 
             #ActivitySubtitle    = "@przemyslawklys - 9/12/2016 at 5:33pm"
             #ActivityImageLink   = "https://pbs.twimg.com/profile_images/1017741651584970753/hGsbJo-o_400x400.jpg"
-            ActivityText    = 'Errors in AD group configuration has been detected' 
+            #ActivityText    = 'Errors in AD group configuration has been detected' 
             ActivityDetails = $ActivityDetails
         }
         New-TeamsSection @TeamsSection
