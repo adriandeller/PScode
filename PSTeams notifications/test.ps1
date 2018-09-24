@@ -9,7 +9,7 @@ $PesterResults = Invoke-ADGroupConfigTest -GroupCode $GroupCode -DepartmentPrefi
 
 if ($PesterResults.FailedCount -gt 0)
 {
-    $PesterResultsErrors = $PesterResults.TestResult | Where-Object { $_.Result -ne 'Passed' } | Group-Object -Property Describe -AsHashTable
+    $TestResultErrors = $PesterResults.TestResult | Where-Object { $_.Result -ne 'Passed' } | Group-Object -Property Describe -AsHashTable
 }
 else
 {
@@ -25,7 +25,7 @@ $TeamConfig = (Get-Content -Path "$PSScriptRoot\config.json") | ConvertFrom-Json
 
 $TeamsMessageColor = [System.Drawing.Color]::Cyan
 
-if ($PesterResultsErrors)
+if ($TestResultErrors)
 {
     $TeamsSections = @()
 
@@ -42,7 +42,7 @@ if ($PesterResultsErrors)
     $TeamsSections += New-TeamsSection @TeamsSectionSummary
 
     # Create a Section for each Describe
-    $TeamsSections += $PesterResultsErrors.GetEnumerator() | ForEach-Object {
+    $TeamsSections += $TestResultErrors.GetEnumerator() | ForEach-Object {
         $SectionName = $PSItem.Name
         $SectionValue = $PSItem.Value
         $ActivityDetails = @()
