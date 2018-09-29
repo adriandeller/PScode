@@ -21,7 +21,7 @@ else
 
 #Region 
 Import-Module PSTeams
-$TeamConfig = (Get-Content -Path "$PSScriptRoot\config.json") | ConvertFrom-Json
+$TeamConfig = (Get-Content -Path "C:\Users\Adrian\Documents\Dev\MyConfig\config.json") | ConvertFrom-Json
 
 $TeamsMessageColor = [System.Drawing.Color]::Cyan
 
